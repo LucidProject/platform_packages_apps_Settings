@@ -21,7 +21,13 @@
         android:key="night_display_title"
         settings:keywords="@string/keywords_display_night_display">
 
-    <DropDownPreference
+    <SwitchPreference
+        android:key="night_display_activation"
+        android:title="@string/night_display_title"
+        settings:keywords="@string/keywords_display_night_display"
+        settings:controller="com.android.settings.display.NightDisplayActivationPreferenceController" />
+
+    <ListPreference
         android:key="night_display_auto_mode"
         android:title="@string/night_display_auto_mode_title"
         android:summary="%s"
@@ -43,14 +49,6 @@
         settings:keywords="@string/keywords_display_night_display"
         settings:controller="com.android.settings.display.NightDisplayIntensityPreferenceController"
         settings:unavailableSliceSubtitle="@string/night_display_not_currently_on" />
-
-    <com.android.settingslib.widget.LayoutPreference
-        android:key="night_display_activated"
-        android:title="@string/night_display_title"
-        android:selectable="false"
-        android:layout="@layout/night_display_activation_button"
-        settings:keywords="@string/keywords_display_night_display"
-        settings:controller="com.android.settings.display.NightDisplayActivationPreferenceController" />
 
     <PreferenceCategory android:key="night_display_footer_category">
         <com.android.settingslib.widget.FooterPreference />
