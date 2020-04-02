@@ -48,4 +48,46 @@ public interface PanelContent extends Instrumentable {
      * </p>
      */
     Intent getSeeMoreIntent();
+
+    /**
+     * @return a string for the subtitle of the Panel.
+     */
+    default CharSequence getSubTitle() {
+        return null;
+    }
+
+    /**
+     * @return an {@link Intent} to the full content in Settings that is summarized by the Panel.
+     *
+     * <p>
+     *     For example, for the connectivity panel you would intent to the Network & Internet page.
+     * </p>
+     */
+    default Intent getHeaderIconIntent() {
+        return null;
+    }
+
+    /**
+     * @return a drawable for the title icon of the Panel.
+     */
+    default IconCompat getIcon() {
+        return null;
+    }
+
+    /**
+     * @return a string for the button title of the Panel.
+     */
+    default CharSequence getCustomButtonTitle() {
+        return null;
+    }
+
+    default boolean isCustomizedButtonUsed() {
+        return false;
+    }
+
+    default void onClickCustomizedButton() {
+    }
+
+    default void registerCallback(PanelCustomizedButtonCallback panelCustomizedButtonCallback) {
+    }
 }

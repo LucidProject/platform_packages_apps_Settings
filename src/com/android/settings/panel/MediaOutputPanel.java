@@ -22,11 +22,35 @@ import static com.android.settings.slices.CustomSliceRegistry.MEDIA_OUTPUT_SLICE
 import android.app.settings.SettingsEnums;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+import android.media.MediaMetadata;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
 import android.net.Uri;
+import android.text.TextUtils;
+import android.util.Log;
+
+import androidx.core.graphics.drawable.IconCompat;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleObserver;
+import androidx.lifecycle.OnLifecycleEvent;
+
+import com.android.internal.annotations.VisibleForTesting;
 
 import com.android.settings.R;
+import com.android.settings.slices.CustomSliceRegistry;
+
+import com.android.settingslib.Utils;
+import com.android.settingslib.media.InfoMediaDevice;
+import com.android.settingslib.media.LocalMediaManager;
+import com.android.settingslib.media.MediaDevice;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -36,7 +60,16 @@ import java.util.List;
  * Displays Media output item
  * </p>
  */
-public class MediaOutputPanel implements PanelContent {
+public class MediaOutputPanel implements PanelContent, LocalMediaManager.DeviceCallback, LifecycleObserver {
+
+    @VisibleForTesting
+    LocalMediaManager mLocalMediaManager;
+
+    private boolean mIsCustomizedButtonUsed = true;
+
+    private PanelCustomizedButtonCallback mCallback;
+    private MediaController mMediaController;
+    private MediaSessionManager mMediaSessionManager;
 
     private final Context mContext;
     private final String mPackageName;
@@ -47,12 +80,58 @@ public class MediaOutputPanel implements PanelContent {
 
     private MediaOutputPanel(Context context, String packageName) {
         mContext = context.getApplicationContext();
-        mPackageName = packageName;
+        mPackageName = TextUtils.isEmpty(packageName) ? "" : packageName;
+        if (!TextUtils.isEmpty(packageName)) {
+            mMediaSessionManager = mContext.getSystemService(MediaSessionManager.class);
+            Iterator<MediaController> mediaIterator = mmediaSessionManager.getActiveSessions(null).iterator();
+            while (true) {
+                if (!mediaIterator.hasNext()) {
+                    break;
+                }
+                MediaController next = mediaIterator.next();
+                if (TextUtils.equals(next.getPackageName(), mPackageName)) {
+                    mMediaController = next;
+                    break;
+                }
+            }
+        }
+        if (mMediaController == null) {
+            Log.e("MediaOutputPanel", "Unable to find " + mPackageName + " media controller");
+        }
     }
 
     @Override
     public CharSequence getTitle() {
-        return mContext.getText(R.string.media_output_panel_title);
+        MediaMetadata metadata;
+        if (mMediaController == null || (metadata = mMediaController.getMetadata()) == null) {
+            return mContext.getText(R.string.media_volume_title);
+        }
+        return metadata.getString("android.media.metadata.ARTIST");
+    }
+
+    @Override
+    public CharSequence getSubTitle() {
+        MediaMetadata metadata;
+        if (mMediaController == null || (metadata = mMediaController.getMetadata()) == null) {
+            return mContext.getText(R.string.media_output_panel_title);
+        }
+        return metadata.getString("android.media.metadata.ALBUM");
+    }
+
+    @Override
+    public IconCompat getIcon() {
+        Bitmap iconBitmap;
+        if (mMediaController == null) {
+            IconCompat withResource = IconCompat.createWithResource(mContext, R.drawable.ic_media_stream);
+            withResource.setTint(Utils.getColorAccentDefaultColor(mContext));
+            return withResource;
+        }
+        MediaMetadata metadata = mMediaController.getMetadata();
+        if (metadata != null && (iconBitmap = metadata.getDescription().getIconBitmap()) != null) {
+            return IconCompat.createWithBitmap(iconBitmap);
+        }
+        Log.d("MediaOutputPanel", "Media meta data does not contain icon information");
+        return getPackageIcon();
     }
 
     @Override
@@ -74,7 +153,87 @@ public class MediaOutputPanel implements PanelContent {
     }
 
     @Override
+    public void onClickCustomizedButton() {
+    }
+
+    @Override
+    public boolean isCustomizedButtonUsed() {
+        return mIsCustomizedButtonUsed;
+    }
+
+    @Override
+    public CharSequence getCustomButtonTitle() {
+        return mContext.getText(R.string.media_output_panel_stop_casting_button);
+    }
+
+    @Override
+    public void registerCallback(PanelCustomizedButtonCallback panelCustomizedButtonCallback) {
+        mCallback = panelCustomizedButtonCallback;
+    }
+
+    @Override
+    public void onSelectedDeviceStateChanged(MediaDevice mediaDevice, int i) {
+        dispatchCustomButtonStateChanged();
+    }
+
+    @Override
+    public void onDeviceListUpdate(List<MediaDevice> list) {
+        dispatchCustomButtonStateChanged();
+    }
+
+    @Override
+    public void onDeviceAttributesChanged() {
+        dispatchCustomButtonStateChanged();
+    }
+
+    @Override
     public int getMetricsCategory() {
         return SettingsEnums.PANEL_MEDIA_OUTPUT;
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_START)
+    public void onStart() {
+        if (mLocalMediaManager == null) {
+            mLocalMediaManager = new LocalMediaManager(mContext, mPackageName, null);
+        }
+        mLocalMediaManager.registerCallback(this);
+        mLocalMediaManager.startScan();
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
+    public void onStop() {
+        mLocalMediaManager.unregisterCallback(this);
+        mLocalMediaManager.stopScan();
+    }
+
+    private IconCompat getPackageIcon() {
+        try {
+            Drawable applicationIcon = mContext.getPackageManager().getApplicationIcon(mPackageName);
+            if (applicationIcon instanceof BitmapDrawable) {
+                return IconCompat.createWithBitmap(((BitmapDrawable) applicationIcon).getBitmap());
+            }
+            Bitmap createBitmap = Bitmap.createBitmap(
+                        applicationIcon.getIntrinsicWidth(),
+                        applicationIcon.getIntrinsicHeight(),
+                        Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(createBitmap);
+            applicationIcon.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+            applicationIcon.draw(canvas);
+            return IconCompat.createWithBitmap(createBitmap);
+        } catch (PackageManager.NameNotFoundException unused) {
+            Log.e("MediaOutputPanel", "Package is not found. Unable to get package icon.");
+            return null;
+        }
+    }
+
+    private void dispatchCustomButtonStateChanged() {
+        hideCustomButtonIfNecessary();
+        if (mCallback != null) {
+            mCallback.onCustomizedButtonStateChanged();
+        }
+    }
+
+    private void hideCustomButtonIfNecessary() {
+        mIsCustomizedButtonUsed = mLocalMediaManager.getCurrentConnectedDevice() instanceof InfoMediaDevice;
     }
 }
