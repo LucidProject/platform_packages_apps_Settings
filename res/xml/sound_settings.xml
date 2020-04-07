@@ -172,6 +172,11 @@
           android:key="touch_sounds"
           android:title="@string/touch_sounds_title"/>
 
+        <!-- Screenshot sounds -->
+        <SwitchPreference
+          android:key="screenshot_sound"
+          android:title="@*android:string/global_action_screenshot" />
+
         <!-- Vibrate on touch -->
         <SwitchPreference
           android:key="vibrate_on_touch"
